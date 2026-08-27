@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ticket Voucher Generator</title>
+<style>
+  :root {
+    --navy: #1B2733;
+    --slate: #3F4E63;
+    --blue: #1F4E8C;
+    --bg: #F5F7FA;
+    --border: #D9DEE4;
+    --red: #C0392B;
+    --green: #1E8449;
+    --muted: #6B7684;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--navy);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 80px;
+  }
+  .bar {
+    width: 100%;
+    max-width: 760px;
+    height: 3px;
+    background: var(--navy);
+    margin-bottom: 24px;
+  }
+  header {
+    width: 100%;
+    max-width: 760px;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: 22px;
+    letter-spacing: 0.02em;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 760px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 260px;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--navy);
+  }
+  textarea:focus {
+    outline: 2px solid var(--blue);
+    outline-offset: 1px;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  button {
+    background: var(--navy);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 11px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--blue); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .status {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .status.error { color: var(--red); }
+  .status.success { color: var(--green); }
+  .download-row {
+    margin-top: 16px;
+    display: none;
+  }
+  .download-row a {
+    display: inline-block;
+    background: var(--green);
+    color: #fff;
+    text-decoration: none;
+    padding: 11px 22px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  footer {
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--muted);
+    max-width: 760px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Flight Voucher Generator</h1>
+    <p class="subtitle">Paste the raw booking text below. We'll extract the fields and produce a ready-to-send PDF voucher.</p>
+  </header>
+  <div class="bar"></div>
+  <div class="card">
+    <label for="ticketText">Raw ticket / booking text</label>
+    <textarea id="ticketText" placeholder="Paste the confirmation email or booking text here..."></textarea>
+
+    <div class="actions">
+      <button id="generateBtn">Generate PDF</button>
+      <span id="status" class="status"></span>
+    </div>
+
+    <div class="download-row" id="downloadRow">
+      <a id="downloadLink" href="#" download="ticket.pdf">Download PDF</a>
+    </div>
+  </div>
+
+  <footer>
+    Fields not found in the text are marked "None" in the generated voucher.
+  </footer>
+
+<script>
+  const btn = document.getElementById('generateBtn');
+  const statusEl = document.getElementById('status');
+  const downloadRow = document.getElementById('downloadRow');
+  const downloadLink = document.getElementById('downloadLink');
+  const textarea = document.getElementById('ticketText');
+
+  btn.addEventListener('click', async () => {
+    const text = textarea.value.trim();
+    if (!text) {
+      statusEl.textContent = 'Paste some ticket text first.';
+      statusEl.className = 'status error';
+      return;
+    }
+
+    btn.disabled = true;
+    statusEl.textContent = 'Extracting fields and building PDF...';
+    statusEl.className = 'status';
+    downloadRow.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(err.detail || 'Request failed');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : 'ticket.pdf';
+
+      downloadLink.href = url;
+      downloadLink.setAttribute('download', filename);
+      downloadRow.style.display = 'block';
+
+      statusEl.textContent = 'PDF generated successfully.';
+      statusEl.className = 'status success';
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e.message;
+      statusEl.className = 'status error';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
